@@ -1,0 +1,13 @@
+## fetch
+DELIMIT="\`"
+FILE=intern_mediawiki.cvs
+
+BASEURL="https://mediaw.z3.notomorrow.de/in/index.php?action=edit&title="
+LASTEDIT="2014-07-04 11:54:52"
+
+## push
+USERNAME="ai"
+USERPASS="xxx"
+WIKIAPI="https://mediaw.z3.notomorrow.de/in/api.php"
+ 
+
