@@ -11,6 +11,7 @@ CURL="curl -k -s -S \
         --compressed"
 
 msg( ) { echo -ne "\033[30;47m>\033[0m ${@}\n" >&2; }
+ask( ) { echo -ne "\033[30;47m>\033[0m ${@}\n" >&2; read r </dev/tty; echo $r; }
 fail( ) { echo -ne "\033[35;47merror:\033[0m ${@}\n" >&2; exit 1; }
 
 token( ) {
@@ -20,10 +21,8 @@ token( ) {
           "${WIKIAPI}?action=login&format=json" \
         | sed -e 's/[{}"]/''/g' \
         | awk -v RS=, -F: ' \
-          { print > "/dev/stderr" } \
           /token/ { print $2 }' \
       || return 1
-  
 }
 login( ) {
     t=$(token)
@@ -34,7 +33,6 @@ login( ) {
           "${WIKIAPI}?action=login&format=json" \
         | sed -e 's/[{}"]/''/g' \
         | awk -v RS=, -F: ' \
-          { print > "/dev/stderr" } \
           /result/ { print "login: " $3 } \
           /lgusername/ { print "hello " $2 }' \
       || return 1
@@ -45,44 +43,71 @@ edittoken( ) {
       | sed -e 's/{/,/g' \
       | sed -e 's/[{}\\+"]//g' \
       | awk -v RS=, -F: ' \
-        { print > "/dev/stderr" } \
         /csrftoken/ { print $2 }'
 }
 push( ) {
-    t=$(edittoken)
+    local t=$1
     [[ $t != "" ]] || fail edittokenfail
 
-    p=`basename "$1" | awk -v RS=foo -F__ '{ print $1 }'`
-    m=`echo "$1" | awk -v RS=foo -F__ '{ print $2 }'`
-    c=`echo "$1" | awk -v RS=foo -F__ '{ print $3 }'`
-    s=`echo "$1" | awk -v RS=foo -F__ '{ print $4 }'`
+    local f=$2
+    local n=${f##intern/}
+    local p=`echo "$n" | awk -v RS=foo -F__ '{ print $1 }'`
+    local m=`echo "$n" | awk -v RS=foo -F__ '{ print $2 }'`
+    local c=`echo "$n" | awk -v RS=foo -F__ '{ print $3 }'`
+    local s=`echo "$n" | awk -v RS=foo -F__ '{ print $4 }'`
+
     [[ $c == "" ]] || m="$m -- $c"
     [[ $s == "ok.out" ]] || m="$m -- ${s%%.out}"
 
-    r=$( $CURL --request "POST" \
+    $CURL --request "POST" \
       --header "Expect:" \
       --form "title=${p}" \
       --form "summary=${m}" \
-      --form "text=<${o}" \
+      --form "text=<${f}" \
       --form "token=${t}+\\" \
       "${WIKIAPI}?action=edit&format=json" \
         | sed -e 's/[{}"]/''/g' \
         | awk -v RS=, -F: ' \
-          { print > "/dev/stderr" } \
-          /result/ { print $3 }' )
-    msg $(printf "create %-60s %s\n" $p $r)
-
-    [[ $r == "Success" ]] || echo "$1" >> push.log
+          #{ print $0 > "/dev/stderr" } \
+          /result/ { print $3 }'
 }
 
 source vars.sh
 
+declare -A st; st=()
+cols=$(echo $(tput cols)-10| bc )
+
+filter="*"
+[[ $1 ]] && filter="$1"
+
+cat /dev/null > push.log
+
 login || fail "login failed"
-[[ $1 ]] || fail "usage: $0 pathtofiles"
-[[ -d "$1" ]] || fail "path not found"
+token=$(edittoken)
 
-find "$1" -print0 -name '*.out' | while read -d $'\0' o; do
-  [[ "$o" != "intern" ]] || continue
-  push "$o"
-done;
+find intern -type f -name "${filter}.out" \
+  | while read o; do
+    [[ "${o:(-4)}" == ".out" ]] || continue  ### why?!
+    [[ -f $o.done ]] && continue
 
+    p=`echo "$o" | awk -v RS=foo -F__ '{ print $1 }'`
+    [[ -f "${p}.fail" ]] && continue
+
+    if [[ $(push $token "$o") == "Success" ]]; then
+      msg $(printf "push % -*s Success" $cols "$p" )
+      cp "$o" "$o.done"
+    else
+      msg "fail: $o"
+      cp "$o" "$o.fail"
+
+      let st[fail]++
+      #[[ $c$(ask "continue ...")  == "" ]] || exit
+
+      echo "$o" >> push.log
+    fi
+done
+
+echo -----
+for k in ${!st[@]}; do 
+    echo $k ${st[$k]}
+done

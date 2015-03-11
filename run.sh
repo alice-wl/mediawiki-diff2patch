@@ -45,12 +45,15 @@ cat /dev/null > patch.log
 [ -d out ] && find out -name '*.notfound' -exec rm {} \;
 
 rm -r intern/*
+rm -r patch/*
+rm -r html/*
 
 while read i; do 
   url=`echo $i | cut -d '\`' -f 4`
   user=`echo $i | cut -d '\`' -f 13 | cut -d '-' -f1`
   date=`echo $i | cut -d '\`' -f 5`
 
+  title=`echo $i | cut -d '\`' -f 2`
   n=`echo $url | perl -pe 's,.*?title=([^&]*).*,\1,'`   ## name in url format
   ts=`echo $date | sed -r 's/[^A-Za-z0-9]+//g' | sed -r 's/2014//'`  ## date shorter
   id=`echo $url | perl -pe 's,.*?diff=([^&]*).*,\1,'`   ## diff id
@@ -171,11 +174,22 @@ while read i; do
     [[ -d "$d" ]] || mkdir -p "$d"
     cat "${o}.patch" > "$patch"
 
-    change="intern/${n}__${date}-${user}__${comment}__${state}.out"
+    change="intern/${title}__${date}-${user}__${comment}__${state}.out"
     d=`dirname "$change"`
     [[ -d "$d" ]] || mkdir -p "$d"
     cat "${p}.work" > "$change"
     echo $change
+
+
+    if [[ $state != "ok" ]]; then
+      l="html/${title}__${date}-${user}__${comment}__${state}.html"
+      d=`dirname "$l"`
+      [[ -d "$d" ]] || mkdir -p "$d"
+      echo "${HTMLSTART}" > "$l"
+      echo "<table class='diff diff-contentalign-left'>" >> "$l"
+      cat "${o}" >> "$l"
+      echo "</table></body></html>" >> "$l"
+    fi
   fi
 
 done <<EOF
