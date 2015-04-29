@@ -38,12 +38,20 @@ login( ) {
       || return 1
 }
 edittoken( ) {
+    ## mediawiki > 1.19
+    #$CURL --request "POST" \
+    #    "${WIKIAPI}?action=query&meta=tokens&format=json" \
+    #  | sed -e 's/{/,/g' \
+    #  | sed -e 's/[{}\\+"]//g' \
+    #  | awk -v RS=, -F: ' \
+    #    /csrftoken/ { print $2 }'
+    ## mediawiki < 1.20
     $CURL --request "POST" \
-        "${WIKIAPI}?action=query&meta=tokens&format=json" \
+        "${WIKIAPI}?action=query&prop=info|revisions&intoken=edit&titles=Hauptseite&format=json" \
       | sed -e 's/{/,/g' \
       | sed -e 's/[{}\\+"]//g' \
       | awk -v RS=, -F: ' \
-        /csrftoken/ { print $2 }'
+        /edittoken/ { print $NF }'
 }
 push( ) {
     local t=$1
@@ -69,7 +77,7 @@ push( ) {
         | sed -e 's/[{}"]/''/g' \
         | awk -v RS=, -F: ' \
           #{ print $0 > "/dev/stderr" } \
-          /result/ { print $3 }'
+          /result/ { print $NF }'
 }
 
 source vars.sh
@@ -88,7 +96,7 @@ token=$(edittoken)
 find intern -type f -name "${filter}.out" \
   | while read o; do
     [[ "${o:(-4)}" == ".out" ]] || continue  ### why?!
-    [[ -f $o.done ]] && continue
+    [[ -f "${o}.done" ]] && continue
 
     p=`echo "$o" | awk -v RS=foo -F__ '{ print $1 }'`
     [[ -f "${p}.fail" ]] && continue
@@ -98,7 +106,7 @@ find intern -type f -name "${filter}.out" \
       cp "$o" "$o.done"
     else
       msg "fail: $o"
-      cp "$o" "$o.fail"
+      cp "$o" "$p.fail"
 
       let st[fail]++
       #[[ $c$(ask "continue ...")  == "" ]] || exit
